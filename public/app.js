@@ -587,6 +587,15 @@
     try { me = (await api('/api/me')).user; } catch (e) { me = null; }
     route();
   }
+  // Keyboard shortcuts: Alt+B opens the staff grading page (students: course home).
+  // Alt+Shift+B toggles high-contrast mode.
+  document.addEventListener('keydown', (e) => {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.code !== 'KeyB') return;
+    e.preventDefault();
+    if (e.shiftKey) { document.body.classList.toggle('hc'); return; }
+    if (!me) return;
+    location.hash = me.role === 'student' ? '#/course' : '#/grading';
+  });
   window.addEventListener('hashchange', route);
   boot();
 })();
