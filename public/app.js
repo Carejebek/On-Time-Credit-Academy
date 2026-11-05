@@ -1,6 +1,6 @@
 (function () {
   const app = document.getElementById('app');
-  const who = document.getElementById('who');
+  const rail = document.getElementById('rail');
   let me = null;
 
   function el(tag, attrs, ...kids) {
@@ -29,14 +29,36 @@
     if (!r.ok) throw new Error(data.error || 'Something went wrong.');
     return data;
   }
-  function show(...nodes) { app.replaceChildren(...nodes); }
+  let navKey = null, railKey = 'dash';
+  function courseNav() {
+    const staffUser = me.role !== 'student';
+    const link = (key, label, href) => el('a', { href, class: 'navitem' + (navKey === key ? ' on' : '') }, label);
+    const out = [el('div', { class: 'navhead' }, 'Credit Analyst Bootcamp'), link('course', 'Course home', '#/course')];
+    for (let n = 1; n <= 8; n++) out.push(link('w' + n, `Week ${n}`, `#/week/${n}`));
+    if (staffUser) out.push(el('div', { class: 'navhead' }, 'Manage'), link('people', 'People and cohorts', '#/people'), link('grading', 'Grading', '#/grading'), link('edit', 'Edit Week 1', '#/edit/1'));
+    return out;
+  }
+  function show(...nodes) {
+    const body = el('div', { class: 'coursebody' });
+    if (navKey !== null && me) body.append(el('nav', { class: 'coursenav' }, courseNav()));
+    body.append(el('div', { class: 'coursemain' }, ...nodes));
+    app.replaceChildren(body);
+  }
   function formData(form) { return Object.fromEntries(new FormData(form).entries()); }
 
-  function renderHeader() {
-    who.replaceChildren();
-    if (!me) return;
-    who.append(el('span', {}, `${me.firstName} ${me.lastName}`), el('span', { class: 'tag' }, me.role),
-      el('button', { class: 'link', onclick: async () => { await api('/api/logout', 'POST'); me = null; route(); } }, 'Sign out'));
+  function renderRail() {
+    rail.replaceChildren();
+    if (!me) { rail.hidden = true; return; }
+    rail.hidden = false;
+    const staffUser = me.role !== 'student';
+    const item = (key, glyph, label, href, onclick) => {
+      const a = el('a', { href: href || '#', class: 'railitem' + (railKey === key ? ' on' : '') }, el('span', { class: 'glyph' }, glyph), el('span', {}, label));
+      if (onclick) a.addEventListener('click', (e) => { e.preventDefault(); onclick(); });
+      return a;
+    };
+    rail.append(el('div', { class: 'railtitle' }, 'OTCA'), item('dash', '⌂', 'Dashboard', '#/'), item('course', '▤', 'Course', '#/course'));
+    if (staffUser) rail.append(item('people', '☺', 'People', '#/people'), item('grading', '✎', 'Grading', '#/grading'));
+    rail.append(item('out', '⎋', 'Sign out', null, async () => { try { await api('/api/logout', 'POST'); } catch (e) {} me = null; route(); }));
   }
 
   function loginView() {
@@ -72,15 +94,28 @@
       el('p', { class: 'muted' }, `Account: ${info.email}`), form));
   }
 
-  async function homeView() {
-    const isStaff = me.role === 'admin' || me.role === 'instructor';
-    const nodes = [el('div', { class: 'card' }, el('h1', {}, `Hello, ${me.firstName}`),
-      el('p', {}, isStaff
-        ? 'Edit the course, open weeks for a cohort and invite students below. Quizzes and grading arrive in the next build steps.'
-        : 'Welcome. Your eight weeks appear below as your instructor opens them.'))];
-    if (isStaff) nodes.push(await staffCourse(), ...(await staffPanels()));
-    else nodes.push(await studentCourse());
-    show(...nodes);
+  async function dashView() {
+    const staffUser = me.role !== 'student';
+    const { weeks } = await api('/api/course');
+    const open = weeks.filter((w) => w.open);
+    const card = (href, title, meta) => el('a', { class: 'ccard', href }, el('div', { class: 'cband' }), el('div', { class: 'cbody' }, el('div', { class: 'ctitle' }, title), el('div', { class: 'cmeta' }, meta)));
+    const cards = [card('#/course', 'Credit Analyst Bootcamp', staffUser ? 'Eight weeks, content and cohorts' : `${open.length} of 8 weeks open`)];
+    if (staffUser) cards.push(card('#/people', 'People and cohorts', 'Invite students and staff'), card('#/grading', 'Grading', 'Assignments and quiz results'));
+    const todo = weeks.filter((w) => w.open && w.done < w.total).map((w) => el('a', { href: `#/week/${w.number}`, class: 'todo' },
+      el('b', {}, `Week ${w.number}: ${w.title}`), el('span', { class: 'muted' }, `${w.done} of ${w.total} done`)));
+    show(el('h1', { class: 'pagetitle' }, `Hello, ${me.firstName}`),
+      el('div', { class: 'dashgrid' },
+        el('div', { class: 'cards' }, cards),
+        el('div', { class: 'dashside' }, el('h2', { style: 'font-size:16px;margin:0 0 8px;color:var(--navy)' }, 'To do'),
+          todo.length ? todo : el('p', { class: 'muted' }, staffUser ? 'Nothing waiting on you right now.' : 'Nothing due right now.'))));
+  }
+
+  async function courseView() {
+    show(me.role === 'student' ? await studentCourse() : await staffCourse());
+  }
+
+  async function peopleView() {
+    show(...(await staffPanels()));
   }
 
   async function staffPanels() {
@@ -95,7 +130,7 @@
     const cform = el('form', { onsubmit: async (e) => {
       e.preventDefault(); cerr.textContent = '';
       const d = formData(cform);
-      try { await api('/api/cohorts', 'POST', { name: d.name, startDate: d.startDate || null }); homeView(); }
+      try { await api('/api/cohorts', 'POST', { name: d.name, startDate: d.startDate || null }); route(); }
       catch (x) { cerr.textContent = x.message; }
     } },
       el('div', { class: 'row' }, field('Cohort name', 'name', 'text', { placeholder: 'Cohort 1' }),
@@ -135,7 +170,7 @@
         catch (x) { alert(x.message); }
       } }, 'New link'),
         me.role === 'admin' && u.id !== me.id ? [' ', el('button', { class: 'small', onclick: async () => {
-          await api(`/api/users/${u.id}/active`, 'POST', { active: !u.active }); homeView();
+          await api(`/api/users/${u.id}/active`, 'POST', { active: !u.active }); route();
         } }, u.active ? 'Deactivate' : 'Reactivate')] : '')));
     panels.push(el('div', { class: 'card' }, el('h2', {}, 'People'), rlink,
       el('table', {}, el('thead', {}, el('tr', {}, ['Name', 'Role', 'Cohort', 'Status', ''].map((h) => el('th', {}, h)))), el('tbody', {}, rows))));
@@ -532,18 +567,21 @@
   }
 
   async function route() {
-    renderHeader();
-    const m = location.hash.match(/^#\/link\/([a-f0-9]+)$/);
-    if (m) return linkView(m[1]);
-    if (!me) return loginView();
-    const w = location.hash.match(/^#\/week\/(\d)$/);
-    if (w) return weekView(parseInt(w[1], 10));
-    if (me.role !== 'student' && location.hash === '#/grading') return gradingView();
-    const g = location.hash.match(/^#\/grade\/(\d+)$/);
-    if (g && me.role !== 'student') return gradeView(parseInt(g[1], 10));
-    const e = location.hash.match(/^#\/edit\/(\d)$/);
-    if (e && me.role !== 'student') return editView(parseInt(e[1], 10));
-    try { await homeView(); } catch (x) { show(el('div', { class: 'card' }, el('p', { class: 'err' }, x.message))); }
+    const h = location.hash;
+    const m = h.match(/^#\/link\/([a-f0-9]+)$/);
+    navKey = null;
+    if (m) { renderRail(); return linkView(m[1]); }
+    if (!me) { renderRail(); return loginView(); }
+    const staffUser = me.role !== 'student';
+    let x;
+    if ((x = h.match(/^#\/week\/(\d)$/))) { navKey = 'w' + x[1]; railKey = 'course'; renderRail(); return weekView(parseInt(x[1], 10)); }
+    if (h === '#/grading' && staffUser) { navKey = 'grading'; railKey = 'grading'; renderRail(); return gradingView(); }
+    if ((x = h.match(/^#\/grade\/(\d+)$/)) && staffUser) { navKey = 'grading'; railKey = 'grading'; renderRail(); return gradeView(parseInt(x[1], 10)); }
+    if ((x = h.match(/^#\/edit\/(\d)$/)) && staffUser) { navKey = 'edit'; railKey = 'course'; renderRail(); return editView(parseInt(x[1], 10)); }
+    if (h === '#/people' && staffUser) { navKey = 'people'; railKey = 'people'; renderRail(); return peopleView(); }
+    if (h === '#/course') { navKey = 'course'; railKey = 'course'; renderRail(); return courseView(); }
+    railKey = 'dash'; renderRail();
+    try { await dashView(); } catch (e) { show(el('div', { class: 'card' }, el('p', { class: 'err' }, e.message))); }
   }
   async function boot() {
     try { me = (await api('/api/me')).user; } catch (e) { me = null; }

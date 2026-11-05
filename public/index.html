@@ -8,11 +8,6 @@
 :root{--navy:#0B1F3A;--gold:#E8B23A;--cream:#F7F4EC;--ink:#1B2A41;--muted:#4A5568;--line:#D9D3C3;--bad:#A12B2B}
 *{box-sizing:border-box}
 body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--cream);color:var(--ink)}
-header{background:var(--navy);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-header b{font-size:18px;letter-spacing:.3px}
-header b span{color:var(--gold)}
-header .who{font-size:14px;display:flex;gap:12px;align-items:center}
-main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
 .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:18px}
 h1{font-size:24px;margin:0 0 6px;color:var(--navy)}
 h2{font-size:18px;margin:0 0 12px;color:var(--navy)}
@@ -56,14 +51,56 @@ a.plain{color:var(--navy);font-weight:600}
 textarea{width:100%;padding:10px 12px;border:1px solid #b9b29f;border-radius:6px;font-size:15px;font-family:inherit;min-height:140px}
 .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .crumb{font-size:14px;margin-bottom:12px}
+.shell{display:flex;min-height:100vh}
+.rail{width:88px;flex:0 0 88px;background:var(--navy);color:#fff;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:2px}
+.rail[hidden]{display:none}
+.railtitle{font-weight:800;color:var(--gold);font-size:15px;letter-spacing:1px;padding:12px 0 14px}
+.railitem{color:#cfd6e4;text-decoration:none;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 4px;width:100%;border-left:3px solid transparent;cursor:pointer;background:none;border-top:0;border-right:0;border-bottom:0;font-family:inherit}
+.railitem.on{color:#fff;border-left-color:var(--gold);background:#16325a}
+.railitem:hover{color:#fff}
+.railitem .glyph{font-size:22px;line-height:1}
+.content{flex:1;min-width:0;display:flex;flex-direction:column}
+.coursebody{display:flex;flex:1;min-width:0}
+.coursenav{width:220px;flex:0 0 220px;background:#fff;border-right:1px solid var(--line);padding:14px 0}
+.navhead{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:14px 20px 6px;font-weight:700}
+.navitem{display:block;padding:9px 20px;color:var(--navy);text-decoration:none;font-size:14px;border-left:3px solid transparent}
+.navitem:hover{background:#F7F4EC}
+.navitem.on{background:#F3EEDD;border-left-color:var(--gold);font-weight:700}
+.coursemain{flex:1;min-width:0;padding:24px 28px 60px;max-width:980px}
+.pagetitle{font-size:26px;margin:0 0 16px;color:var(--navy)}
+.dashgrid{display:grid;grid-template-columns:1fr 280px;gap:22px;align-items:start}
+@media(max-width:900px){.dashgrid{grid-template-columns:1fr}}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.ccard{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;text-decoration:none;color:var(--ink);display:block}
+.ccard:hover{border-color:var(--gold)}
+.cband{height:88px;background:linear-gradient(135deg,var(--navy),#1d3f6e);border-bottom:4px solid var(--gold)}
+.cbody{padding:12px 14px}
+.ctitle{font-weight:700;color:var(--navy);font-size:16px}
+.cmeta{font-size:13px;color:var(--muted);margin-top:4px}
+.dashside{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
+.todo{display:flex;flex-direction:column;padding:10px 0;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink);font-size:14px}
+.todo:last-child{border-bottom:0}
+@media(max-width:700px){
+  .shell{flex-direction:column}
+  .rail{width:auto;flex:none;flex-direction:row;justify-content:space-around;order:2;position:sticky;bottom:0;padding:0}
+  .railtitle{display:none}
+  .railitem{padding:8px 2px;font-size:11px;border-left:0;border-top:3px solid transparent}
+  .railitem.on{border-top-color:var(--gold);border-left-color:transparent}
+  .railitem .glyph{font-size:18px}
+  .coursebody{flex-direction:column}
+  .coursenav{width:auto;flex:none;display:flex;overflow-x:auto;padding:6px;border-right:0;border-bottom:1px solid var(--line)}
+  .navhead{display:none}
+  .navitem{border-left:0;border-bottom:3px solid transparent;white-space:nowrap}
+  .navitem.on{border-bottom-color:var(--gold);background:none}
+  .coursemain{padding:16px 14px 90px}
+}
 </style>
 </head>
 <body>
-<header>
-  <b>On Time <span>Credit</span> Academy</b>
-  <div class="who" id="who"></div>
-</header>
-<main id="app"></main>
+<div class="shell">
+<nav class="rail" id="rail" hidden></nav>
+<div class="content" id="app"></div>
+</div>
 <script src="/app.js"></script>
 </body>
 </html>
