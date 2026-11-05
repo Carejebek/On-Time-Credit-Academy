@@ -1,0 +1,12 @@
+{
+  "name": "on-time-credit-academy",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": { "start": "node src/server.js" },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "express": "4.21.2",
+    "pg": "8.13.1"
+  }
+}

@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: academy
+      POSTGRES_DB: academy
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - academy_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U academy -d academy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: "3070"
+      DATABASE_URL: postgres://academy:${DB_PASSWORD}@db:5432/academy
+      BASE_URL: ${BASE_URL}
+      COOKIE_SECURE: ${COOKIE_SECURE}
+      SEAT_CAP: "15"
+      UPLOAD_DIR: /data/uploads
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_FIRST_NAME: ${ADMIN_FIRST_NAME}
+      ADMIN_LAST_NAME: ${ADMIN_LAST_NAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    volumes:
+      - academy_uploads:/data/uploads
+    ports:
+      - "127.0.0.1:3070:3070"
+
+volumes:
+  academy_pgdata:
+  academy_uploads:
