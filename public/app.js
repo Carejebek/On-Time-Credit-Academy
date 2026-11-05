@@ -111,7 +111,12 @@
   }
 
   async function courseView() {
-    show(me.role === 'student' ? await studentCourse() : await staffCourse());
+    const info = el('div', { class: 'card' },
+      el('h2', {}, 'Next cohort'),
+      el('p', { style: 'margin:0 0 6px' }, el('b', {}, 'Start date: '), 'January 18, 2027'),
+      el('p', { style: 'margin:0' }, el('b', {}, 'Tuition: '), '$1,092.50 at the starting price. Tuition varies by time and season, so the price may change for later enrollment.'));
+    const body = me.role === 'student' ? await studentCourse() : await staffCourse();
+    show(info, ...(Array.isArray(body) ? body : [body]));
   }
 
   async function peopleView() {

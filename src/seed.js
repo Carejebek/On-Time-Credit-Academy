@@ -162,4 +162,6 @@ async function seed(q) {
   }
 }
 
-module.exports = { seed: async (q) => { await seed(q); await seedQuiz(q); } };
+const { seedWeeks } = require('./course2');
+
+module.exports = { seed: async (q) => { await seed(q); await seedQuiz(q); await seedWeeks(q); } };
