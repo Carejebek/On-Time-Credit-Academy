@@ -232,6 +232,7 @@
     sel.addEventListener('change', load);
     if (cohorts.length) card.append(el('label', {}, 'Cohort'), sel);
     else card.append(el('p', { class: 'muted' }, 'Add a cohort first (below), then you can open weeks for it.'));
+    card.append(el('p', {}, el('a', { class: 'btn', href: '#/grading' }, 'Grading and quiz results')));
     card.append(holder);
     await load();
     return card;
@@ -247,12 +248,13 @@
     if (staffUser) head.append(el('a', { class: 'btn', href: `#/edit/${n}` }, 'Edit this week'));
     nodes.push(head);
     if (!d.items.length) nodes.push(el('div', { class: 'card' }, el('p', { class: 'muted' }, 'Nothing has been added to this week yet.')));
-    d.items.forEach((it) => {
+    for (const it of d.items) {
       const box = el('div', { class: 'item' + (it.staffOnly ? ' staffonly' : '') },
         el('h3', {}, it.title), el('span', { class: 'tag' }, KIND_LABEL[it.kind] || it.kind), it.staffOnly ? [' ', el('span', { class: 'tag' }, 'Staff only')] : '');
       if (it.embed) box.append(el('div', { class: 'video' }, el('iframe', { src: it.embed, allow: 'fullscreen; picture-in-picture', allowfullscreen: 'allowfullscreen', title: it.title })));
       if (it.body) box.append(el('div', { style: 'margin-top:10px' }, rich(it.body)));
       if (it.hasFile) box.append(el('p', {}, el('a', { class: 'btn', href: `/api/items/${it.id}/file` }, `Download ${it.fileName}`)));
+      if (!staffUser && it.kind === 'assignment') box.append(await assignmentBox(it));
       if (!staffUser && !it.staffOnly) {
         const cb = el('input', { type: 'checkbox' });
         cb.checked = it.done;
@@ -260,7 +262,9 @@
         box.append(el('label', { class: 'check' }, cb, 'Mark as done'));
       }
       nodes.push(box);
-    });
+    }
+    const qc = await quizCard(n);
+    if (qc) nodes.push(qc);
     show(...nodes);
   }
 
@@ -338,7 +342,193 @@
     const add = itemForm(null, n, reload);
     nodes.push(el('div', { class: 'card' }, el('h2', {}, 'Add something to this week'), add.form,
       el('p', { class: 'muted' }, 'After adding an item you can attach a file to it.')));
+    nodes.push(await quizEditor(n));
     show(...nodes);
+  }
+
+  // ---------- Quizzes and assignments ----------
+  const shuffled = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const fmtDate = (d) => new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+
+  async function quizCard(n) {
+    let d;
+    try { d = await api(`/api/course/${n}/quiz`); } catch (x) { return null; }
+    if (!d.quiz) return null;
+    const qz = d.quiz;
+    const staffUser = me.role !== 'student';
+    const card = el('div', { class: 'item' }, el('h3', {}, qz.title), el('span', { class: 'tag' }, 'Quiz'),
+      el('p', { class: 'muted' }, `${qz.questions.length} questions · ${qz.passMark}% to pass · retake as often as you like`));
+    if (d.best) card.append(el('p', {}, el('b', {}, `Your best: ${d.best.score} of ${d.best.total}`), d.best.passed ? ' · Passed' : ' · Not passed yet', ` (${d.attempts} attempt${d.attempts === 1 ? '' : 's'})`));
+    const body = el('div');
+    const start = () => {
+      body.replaceChildren();
+      const err = el('div', { class: 'err' });
+      const form = el('div');
+      qz.questions.forEach((x, i) => {
+        const box = el('div', { style: 'margin:14px 0' }, el('b', {}, `${i + 1}. ${x.prompt}`));
+        shuffled(x.options.map((t, idx) => [idx, t])).forEach(([idx, t]) => {
+          const r = el('input', { type: 'radio', name: 'q' + x.id, value: String(idx) });
+          box.append(el('label', { class: 'check', style: 'font-weight:400' }, r, t));
+        });
+        form.append(box);
+      });
+      const submit = el('button', { type: 'button', onclick: async () => {
+        err.textContent = '';
+        const answers = {};
+        qz.questions.forEach((x) => { const c = form.querySelector(`input[name=q${x.id}]:checked`); if (c) answers[x.id] = parseInt(c.value, 10); });
+        if (Object.keys(answers).length < qz.questions.length && !confirm('Some questions are unanswered. Submit anyway?')) return;
+        try { showResult(await api(`/api/quizzes/${qz.id}/attempt`, 'POST', { answers })); } catch (x) { err.textContent = x.message; }
+      } }, 'Submit answers');
+      body.append(form, submit, err);
+    };
+    const showResult = (r) => {
+      body.replaceChildren(el('div', { class: 'ok', style: 'word-break:normal' },
+        el('b', {}, `${r.score} of ${r.total} (${r.percent}%)`), r.passed ? ' · Passed' : ` · Not passed yet. You need ${r.passMark}%.`,
+        r.saved ? '' : ' · Preview only, not saved.'));
+      qz.questions.forEach((x, i) => {
+        const res = r.results.find((y) => y.id === x.id);
+        body.append(el('div', { style: 'margin:12px 0' },
+          el('b', {}, `${i + 1}. ${x.prompt}`),
+          el('div', {}, res.correct ? '✔ Correct' : `✘ Not quite. Right answer: ${x.options[res.correctIndex]}`),
+          res.explanation ? el('div', { class: 'muted' }, res.explanation) : ''));
+      });
+      body.append(el('button', { type: 'button', onclick: start }, 'Try again'));
+    };
+    card.append(body, el('button', { type: 'button', style: 'margin-top:8px', onclick: start }, staffUser ? 'Try the quiz (not saved)' : (d.attempts ? 'Retake the quiz' : 'Take the quiz')));
+    return card;
+  }
+
+  async function assignmentBox(it) {
+    const box = el('div', { style: 'margin-top:14px;padding-top:12px;border-top:1px solid var(--line)' });
+    async function draw() {
+      const { submission: s } = await api(`/api/items/${it.id}/submission`);
+      box.replaceChildren(el('b', {}, 'Your submission'));
+      if (s && s.released) {
+        box.append(el('div', { class: 'ok', style: 'word-break:normal' }, el('b', {}, `Graded: ${s.score} out of 100`)));
+        if (s.feedback) box.append(el('p', {}, el('b', {}, 'Feedback')), rich(s.feedback));
+        if (s.body) box.append(el('p', { class: 'muted' }, 'What you submitted:'), el('div', { style: 'white-space:pre-wrap' }, s.body));
+        if (s.hasFile) box.append(el('p', {}, el('a', { class: 'plain', href: `/api/submissions/${s.id}/file` }, `Your file: ${s.fileName}`)));
+        return;
+      }
+      const msg = el('div', { class: 'err' });
+      const ta = el('textarea', { placeholder: 'Type or paste your answer here' }); ta.value = s ? s.body : '';
+      const fin = el('input', { type: 'file' });
+      box.append(el('p', { class: 'muted' }, s ? `Last saved ${fmtDate(s.submittedAt)}. You can change it until it is graded.` : 'Not submitted yet.'), ta,
+        el('div', { class: 'actions' }, el('button', { type: 'button', onclick: async () => {
+          msg.textContent = '';
+          try { await api(`/api/items/${it.id}/submission`, 'PUT', { body: ta.value }); await draw(); } catch (x) { msg.textContent = x.message; }
+        } }, 'Submit text')),
+        el('div', { style: 'margin-top:10px' }, el('span', { class: 'muted' }, 'Or attach a document (up to 25 MB): '), fin, ' ', el('button', { type: 'button', class: 'small', onclick: async () => {
+          msg.textContent = '';
+          const f = fin.files[0];
+          if (!f) { msg.textContent = 'Choose a file first.'; return; }
+          try {
+            const r = await fetch(`/api/items/${it.id}/submission/file`, { method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/octet-stream', 'x-filename': encodeURIComponent(f.name) }, body: f });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(j.error || 'Upload failed.');
+            await draw();
+          } catch (x) { msg.textContent = x.message; }
+        } }, 'Upload file')),
+        s && s.hasFile ? el('p', {}, `Attached: ${s.fileName}`) : '', msg);
+    }
+    await draw();
+    return box;
+  }
+
+  async function quizEditor(n) {
+    const d = await api(`/api/course/${n}/quiz`);
+    const state = d.quiz
+      ? { title: d.quiz.title, passMark: d.quiz.passMark, questions: d.quiz.questions.map((x) => ({ prompt: x.prompt, options: x.options.slice(), correct: x.correct, explanation: x.explanation })) }
+      : { title: `Week ${n} quiz`, passMark: 70, questions: [] };
+    const card = el('div', { class: 'card' });
+    const refs = [];
+    function draw() {
+      refs.length = 0;
+      card.replaceChildren(el('h2', {}, 'Quiz for this week'), el('p', { class: 'muted' }, 'Multiple choice. Students see the right answers and your explanation after they submit.'));
+      const title = el('input', { value: state.title, maxlength: '150' });
+      const pass = el('input', { type: 'number', min: '1', max: '100', value: String(state.passMark) });
+      card.append(el('div', { class: 'row' }, el('div', {}, el('label', {}, 'Quiz title'), title), el('div', {}, el('label', {}, 'Pass mark (%)'), pass)));
+      state.questions.forEach((x, i) => {
+        const prompt = el('textarea', { style: 'min-height:60px' }); prompt.value = x.prompt;
+        const opts = [], radios = [];
+        const box = el('div', { class: 'item' }, el('b', {}, `Question ${i + 1}`), prompt);
+        for (let k = 0; k < 4; k++) {
+          const o = el('input', { value: x.options[k] || '', placeholder: `Answer ${String.fromCharCode(65 + k)}` });
+          const r = el('input', { type: 'radio', name: `c${i}` }); r.checked = x.correct === k;
+          opts.push(o); radios.push(r);
+          box.append(el('label', { class: 'check', style: 'font-weight:400' }, r, 'Correct', o));
+        }
+        const why = el('input', { value: x.explanation || '', placeholder: 'Why this is the right answer (shown after submitting)' });
+        box.append(el('div', { style: 'margin-top:8px' }, why), el('div', { class: 'actions' }, el('button', { type: 'button', class: 'small', onclick: () => { readAll(); state.questions.splice(i, 1); draw(); } }, 'Remove question')));
+        card.append(box);
+        refs.push({ prompt, opts, radios, why });
+      });
+      const msg = el('div', { class: 'err' });
+      card.append(el('div', { class: 'actions' },
+        el('button', { type: 'button', class: 'small', onclick: () => { readAll(); state.questions.push({ prompt: '', options: ['', '', '', ''], correct: 0, explanation: '' }); draw(); } }, 'Add a question'),
+        el('button', { type: 'button', onclick: async () => {
+          msg.textContent = '';
+          readAll();
+          try {
+            const questions = state.questions.map((x, i) => {
+              const options = [], map = [];
+              x.options.forEach((t, k) => { if (t.trim()) { map[k] = options.length; options.push(t.trim()); } });
+              if (map[x.correct] === undefined) throw new Error(`Question ${i + 1}: the marked answer is empty.`);
+              return { prompt: x.prompt, options, correct: map[x.correct], explanation: x.explanation };
+            });
+            await api(`/api/course/${n}/quiz`, 'PUT', { title: state.title, passMark: parseInt(state.passMark, 10), questions });
+            msg.textContent = 'Quiz saved.';
+          } catch (e) { msg.textContent = e.message; }
+        } }, 'Save quiz'),
+        d.quiz ? el('button', { type: 'button', class: 'small', onclick: async () => { if (confirm('Delete this quiz and all student attempts?')) { await api(`/api/course/${n}/quiz`, 'DELETE'); editView(n); } } }, 'Delete quiz') : ''), msg);
+      card._title = title; card._pass = pass;
+    }
+    function readAll() {
+      if (card._title) { state.title = card._title.value; state.passMark = card._pass.value; }
+      refs.forEach((r, i) => {
+        const x = state.questions[i]; if (!x) return;
+        x.prompt = r.prompt.value; x.options = r.opts.map((o) => o.value); x.explanation = r.why.value;
+        const k = r.radios.findIndex((c) => c.checked); if (k >= 0) x.correct = k;
+      });
+    }
+    draw();
+    return card;
+  }
+
+  async function gradingView() {
+    const [{ submissions }, { results }] = await Promise.all([api('/api/submissions'), api('/api/quiz-results')]);
+    const status = (s) => (s.released ? `Released: ${s.score}/100` : (s.score !== null ? `Draft: ${s.score}/100` : 'Needs grading'));
+    const nodes = [el('div', { class: 'crumb' }, el('a', { class: 'plain', href: '#/' }, '← Back'))];
+    nodes.push(el('div', { class: 'card' }, el('h1', {}, 'Assignments to grade'),
+      submissions.length ? el('table', {}, el('thead', {}, el('tr', {}, ['Student', 'Week', 'Assignment', 'Submitted', 'Status', ''].map((h) => el('th', {}, h)))),
+        el('tbody', {}, submissions.map((s) => el('tr', {}, el('td', {}, `${s.first_name} ${s.last_name}`), el('td', {}, `Week ${s.week}`), el('td', {}, s.item),
+          el('td', {}, fmtDate(s.submitted_at)), el('td', {}, status(s)), el('td', {}, el('a', { class: 'plain', href: `#/grade/${s.id}` }, 'Open'))))))
+        : el('p', { class: 'muted' }, 'Nothing has been submitted yet.')));
+    nodes.push(el('div', { class: 'card' }, el('h2', {}, 'Quiz results'),
+      results.length ? el('table', {}, el('thead', {}, el('tr', {}, ['Student', 'Week', 'Best score', 'Attempts', 'Passed'].map((h) => el('th', {}, h)))),
+        el('tbody', {}, results.map((r) => el('tr', {}, el('td', {}, `${r.first_name} ${r.last_name}`), el('td', {}, `Week ${r.week}`), el('td', {}, `${r.best}%`), el('td', {}, String(r.attempts)), el('td', {}, r.passed ? 'Yes' : 'Not yet')))))
+        : el('p', { class: 'muted' }, 'No quiz attempts yet.')));
+    show(...nodes);
+  }
+
+  async function gradeView(id) {
+    let s;
+    try { s = (await api('/api/submissions/' + id)).submission; } catch (x) { show(el('div', { class: 'card' }, el('p', {}, x.message))); return; }
+    const msg = el('div', { class: 'err' });
+    const score = el('input', { type: 'number', min: '0', max: '100', value: s.score === null ? '' : String(s.score) });
+    const fb = el('textarea'); fb.value = s.feedback || '';
+    const save = (release) => async () => {
+      msg.textContent = '';
+      try { await api('/api/submissions/' + id, 'PUT', { score: score.value, feedback: fb.value, release }); msg.textContent = release ? 'Released to the student.' : 'Draft saved. The student cannot see it yet.'; }
+      catch (x) { msg.textContent = x.message; }
+    };
+    show(el('div', { class: 'crumb' }, el('a', { class: 'plain', href: '#/grading' }, '← All submissions')),
+      el('div', { class: 'card' }, el('h1', {}, s.item), el('p', { class: 'muted' }, `${s.student} (${s.email}) · Week ${s.week} · submitted ${fmtDate(s.submittedAt)}`),
+        el('h2', {}, 'Their answer'), s.body ? el('div', { style: 'white-space:pre-wrap;border:1px solid var(--line);border-radius:6px;padding:12px;background:#fff' }, s.body) : el('p', { class: 'muted' }, 'No typed text.'),
+        s.hasFile ? el('p', {}, el('a', { class: 'btn', href: `/api/submissions/${s.id}/file` }, `Download ${s.fileName}`)) : ''),
+      el('div', { class: 'card' }, el('h2', {}, 'Grade'), el('label', {}, 'Score (0 to 100)'), score, el('label', {}, 'Feedback for the student'), fb,
+        el('div', { class: 'actions' }, el('button', { type: 'button', class: 'small', onclick: save(false) }, 'Save draft'), el('button', { type: 'button', class: 'gold', onclick: save(true) }, 'Release to student')), msg));
   }
 
   async function route() {
@@ -348,6 +538,9 @@
     if (!me) return loginView();
     const w = location.hash.match(/^#\/week\/(\d)$/);
     if (w) return weekView(parseInt(w[1], 10));
+    if (me.role !== 'student' && location.hash === '#/grading') return gradingView();
+    const g = location.hash.match(/^#\/grade\/(\d+)$/);
+    if (g && me.role !== 'student') return gradeView(parseInt(g[1], 10));
     const e = location.hash.match(/^#\/edit\/(\d)$/);
     if (e && me.role !== 'student') return editView(parseInt(e[1], 10));
     try { await homeView(); } catch (x) { show(el('div', { class: 'card' }, el('p', { class: 'err' }, x.message))); }

@@ -251,6 +251,7 @@ app.post('/api/users/:id/active', requireAuth, requireRole('admin'), async (req,
 });
 
 require('./content')(app, { q, requireAuth, requireRole });
+require('./assess')(app, { q, requireAuth, requireRole });
 
 app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '5m' }));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));

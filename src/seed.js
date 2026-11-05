@@ -115,6 +115,33 @@ const WEEK1 = [
     ) },
 ];
 
+
+const QUIZ1 = [
+  ['What is the main question a credit analyst answers?', ['Is the borrower friendly?', 'Will the loan be repaid, and on what terms?', 'How much interest can we charge?', 'Can the borrower buy more assets?'], 1, 'The role is to judge repayment and support a decision.'],
+  ['Which step comes right after analysis?', ['Closing', 'Intake', 'Structuring', 'Monitoring'], 2, 'Order: intake, analysis, structuring, memo, approval, closing and monitoring.'],
+  ['Which C describes the borrower\'s willingness to repay?', ['Character', 'Capital', 'Collateral', 'Conditions'], 0, 'Character covers history and honesty.'],
+  ['Which C is usually considered most important?', ['Collateral', 'Capacity', 'Conditions', 'Capital'], 1, 'Repayment should come from cash flow first.'],
+  ['An owner invests 30% of the purchase price from savings. Which C does this strengthen?', ['Character', 'Conditions', 'Capital', 'Capacity'], 2, 'It is the owner\'s own money at risk.'],
+  ['A shrinking industry mainly affects which C?', ['Capital', 'Conditions', 'Collateral', 'Character'], 1, 'Outside factors are Conditions.'],
+  ['Which loan type fits seasonal working capital needs?', ['Term loan', 'Commercial real estate loan', 'Revolving line of credit', 'Equipment lease'], 2, 'A line can be drawn and repaid as needs change.'],
+  ['Why is collateral called a backup source of repayment?', ['It replaces cash flow', 'It is used only if cash flow fails', 'It is always worth more than the loan', 'It is paid first'], 1, 'Cash flow is the first source of repayment.'],
+  ['A borrower omits an existing debt from the application. This is mainly a concern about:', ['Capacity', 'Conditions', 'Character', 'Collateral'], 2, 'Honesty and completeness reflect character.'],
+  ['Which pairing of purpose and loan type is a mismatch?', ['Seasonal payroll with a line of credit', 'Building purchase with a short-term line of credit', 'New oven with a term loan', 'Property purchase with a real estate loan'], 1, 'A long-term asset should not rely on short-term, revolving money.'],
+];
+
+async function seedQuiz(q) {
+  const w1 = (await q('SELECT id FROM weeks WHERE number = 1')).rows[0];
+  if (!w1) return;
+  const has = (await q('SELECT 1 FROM quizzes WHERE week_id = $1', [w1.id])).rows[0];
+  if (has) return;
+  const z = (await q('INSERT INTO quizzes (week_id, title, pass_mark) VALUES ($1,$2,70) RETURNING id', [w1.id, 'Week 1 quiz: terms and the 5 Cs'])).rows[0];
+  let pos = 1;
+  for (const [prompt, options, correct, why] of QUIZ1) {
+    await q('INSERT INTO quiz_questions (quiz_id, position, prompt, options, correct, explanation) VALUES ($1,$2,$3,$4,$5,$6)',
+      [z.id, pos++, prompt, JSON.stringify(options), correct, why]);
+  }
+}
+
 async function seed(q) {
   const w = await q('SELECT count(*)::int AS n FROM weeks');
   if (w.rows[0].n === 0) {
@@ -135,4 +162,4 @@ async function seed(q) {
   }
 }
 
-module.exports = { seed };
+module.exports = { seed: async (q) => { await seed(q); await seedQuiz(q); } };
